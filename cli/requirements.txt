@@ -1,0 +1,16 @@
+# CLI Framework
+typer[all]>=0.9.0
+rich>=13.0.0
+
+# Redis
+redis>=5.0.0
+
+# HTTP client
+httpx>=0.25.0
+
+# Serialization
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# Utilities
+python-dotenv>=1.0.0

@@ -1,0 +1,20 @@
+# Whitelist of allowed domains for agent egress
+# Only API endpoints that the agent is allowed to access
+
+# LiteLLM endpoints
+api.openai.com
+api.anthropic.com
+api.cohere.ai
+api.google.com
+api.mistral.ai
+
+# Package managers (for updates only, controlled)
+pypi.org
+files.pythonhosted.org
+
+# Required APIs for LangChain/LangGraph
+langchain.com
+api.langchain.com
+
+# Monitoring/Health endpoints (optional)
+healthchecks.io

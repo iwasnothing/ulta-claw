@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  # Hardened Redis with ACLs
+  redis:
+    image: redis:7-alpine
+    container_name: secure-redis
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - ./config/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - ./config/redis/users.acl:/usr/local/etc/redis/users.acl:ro
+    networks:
+      - secure-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Squid Proxy for egress filtering
+  squid:
+    image: ubuntu/squid:latest
+    container_name: squid-proxy
+    ports:
+      - "3128:3128"
+    volumes:
+      - ./config/squid/squid.conf:/etc/squid/squid.conf:ro
+      - ./config/squid/whitelist.txt:/etc/squid/whitelist.txt:ro
+    networks:
+      - secure-net
+      - egress-net
+    restart: unless-stopped
+    depends_on:
+      - redis
+
+  # LiteLLM Proxy for API masking
+  litellm:
+    image: ghcr.io/berriai/litellm:main
+    container_name: litellm-proxy
+    environment:
+      - LITELM_MASTER_KEY=${LITELM_MASTER_KEY}
+    volumes:
+      - ./config/litellm/config.yaml:/app/config.yaml:ro
+    ports:
+      - "4000:4000"
+    networks:
+      - secure-net
+    restart: unless-stopped
+    depends_on:
+      - redis
+
+  # WasmEdge Gateway (Ingress)
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: wasmedge-gateway
+    ports:
+      - "8080:8080"
+    networks:
+      - ingress-net
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    restart: unless-stopped
+    depends_on:
+      - redis
+
+  # Agent Runtime (Python/LangChain) - No direct internet access
+  agent:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    container_name: agent-runtime
+    networks:
+      - secure-net
+      - agent-net
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - LITELM_ENDPOINT=http://litellm:4000
+      - LITELM_KEY=${LITELM_MASTER_KEY}
+      - http_proxy=http://squid:3128
+      - https_proxy=http://squid:3128
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - squid
+      - litellm
+    # No ports exposed - agent is isolated
+
+networks:
+  ingress-net:
+    driver: bridge
+  secure-net:
+    driver: bridge
+    internal: false
+  agent-net:
+    driver: bridge
+    internal: false
+  egress-net:
+    driver: bridge

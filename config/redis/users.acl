@@ -1,0 +1,20 @@
+# Redis ACL Configuration
+# Format: user <username> on/off <password> <rules>
+
+# Default user - no access
+user default off
+
+# Admin user - full access
+user admin on ~* &* +@all >${REDIS_ADMIN_PASSWORD}
+
+# Gateway user - read access to config
+user gateway on ~config:* >${REDIS_GATEWAY_PASSWORD}
+
+# Agent user - write access to specific keys only
+user agent on ~agent:* ~task:* ~result:* >${REDIS_AGENT_PASSWORD}
+
+# CLI user - read/write to specific keys
+user cli on ~config:* ~agent:* ~task:* ~result:* >${REDIS_CLI_PASSWORD}
+
+# Litellm user - read access to config
+user litellm on ~litellm:* >${REDIS_LITELM_PASSWORD}
