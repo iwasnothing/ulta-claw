@@ -150,12 +150,10 @@ async fn get_result(
 
 // Helper functions
 async fn check_redis_connection(redis_client: &Client) -> bool {
-    redis_client
-        .get_async_connection()
-        .await
-        .and_then(|mut conn| async move { conn.ping().await })
-        .await
-        .is_ok()
+    match redis_client.get_async_connection().await {
+        Ok(mut conn) => conn.ping().await.is_ok(),
+        Err(_) => false,
+    }
 }
 
 async fn validate_request(req: &AgentRequest, headers: &HeaderMap) -> Result<(), String> {

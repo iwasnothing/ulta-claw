@@ -50,8 +50,8 @@ install-cli:
 	cd cli && pip install -r requirements.txt
 
 install-gateway:
-	@echo "Building gateway..."
-	cd gateway && cargo build --release
+	@echo "Building gateway for ARM64..."
+	ARCH="aarch64-unknown-linux-gnu" docker-compose build gateway
 
 # Development targets
 dev-gateway:

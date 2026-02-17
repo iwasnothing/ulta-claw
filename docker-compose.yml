@@ -52,6 +52,7 @@ services:
 
   # WasmEdge Gateway (Ingress)
   gateway:
+    platform: linux/arm64
     build:
       context: ./gateway
       dockerfile: Dockerfile
