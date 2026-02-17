@@ -7,7 +7,7 @@ WORKDIR /app
 RUN apk add --no-cache musl-dev pkgconfig openssl-dev
 
 # Copy source
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml ./
 COPY src ./src
 
 # Build
