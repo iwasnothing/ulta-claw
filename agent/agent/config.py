@@ -24,7 +24,7 @@ class AgentConfig(BaseSettings):
     no_proxy: str = "redis,litellm,localhost"
 
     # Agent settings
-    model_name: str = "claude-3-sonnet"
+    model_name: str = "qwen-30b"
     max_tokens: int = 4096
     temperature: float = 0.7
     max_retries: int = 3

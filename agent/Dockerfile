@@ -18,7 +18,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application
 COPY agent/ ./agent/
-COPY config/ ./config/
 
 # Create non-root user for security
 RUN useradd -m -u 1000 agent && \

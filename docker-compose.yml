@@ -5,10 +5,23 @@ services:
   redis:
     image: redis:7-alpine
     container_name: secure-redis
-    command: redis-server /usr/local/etc/redis/redis.conf
-    volumes:
-      - ./config/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
-      - ./config/redis/users.acl:/usr/local/etc/redis/users.acl:ro
+    command: >
+      redis-server
+      --bind 0.0.0.0
+      --protected-mode yes
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --save ""
+      --loglevel notice
+      --timeout 300
+      --tcp-keepalive 60
+      --rename-command FLUSHDB ""
+      --rename-command FLUSHALL ""
+      --rename-command CONFIG ""
+      --rename-command SHUTDOWN ""
+      --rename-command DEBUG ""
     networks:
       - secure-net
     restart: unless-stopped
@@ -36,14 +49,19 @@ services:
 
   # LiteLLM Proxy for API masking
   litellm:
-    image: ghcr.io/berriai/litellm:main
+    image: ghcr.io/berriai/litellm:latest
     container_name: litellm-proxy
     environment:
+      - PORT=4000
       - LITELM_MASTER_KEY=${LITELM_MASTER_KEY}
-    volumes:
-      - ./config/litellm/config.yaml:/app/config.yaml:ro
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
     ports:
       - "4000:4000"
+    volumes:
+      - ./config/litellm/config.yaml:/app/config.yaml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - secure-net
     restart: unless-stopped
@@ -52,7 +70,6 @@ services:
 
   # WasmEdge Gateway (Ingress)
   gateway:
-    platform: linux/arm64
     build:
       context: ./gateway
       dockerfile: Dockerfile
@@ -61,10 +78,12 @@ services:
       - "8080:8080"
     networks:
       - ingress-net
+      - secure-net
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
     restart: unless-stopped
     depends_on:
       - redis
@@ -86,6 +105,7 @@ services:
       - LITELM_KEY=${LITELM_MASTER_KEY}
       - http_proxy=http://squid:3128
       - https_proxy=http://squid:3128
+      - NO_PROXY=redis,litellm,localhost
     restart: unless-stopped
     depends_on:
       - redis

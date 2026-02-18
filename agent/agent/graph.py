@@ -202,5 +202,6 @@ class SecureAgent:
 
     async def shutdown(self):
         """Shutdown agent components."""
+        await self.llm.close()
         await self.storage.disconnect()
         logger.info("Agent shutdown complete")

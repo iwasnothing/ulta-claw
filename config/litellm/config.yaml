@@ -1,50 +1,31 @@
 # LiteLLM Configuration for API masking
 
 model_list:
-  - model_name: gpt-4
+  - model_name: qwen-30b
     litellm_params:
-      model: openai/gpt-4
-      api_key: os.environ/OPENAI_API_KEY
-  - model_name: claude-3-opus
-    litellm_params:
-      model: anthropic/claude-3-opus
-      api_key: os.environ/ANTHROPIC_API_KEY
-  - model_name: claude-3-sonnet
-    litellm_params:
-      model: anthropic/claude-3-sonnet
-      api_key: os.environ/ANTHROPIC_API_KEY
-  - model_name: mistral-large
-    litellm_params:
-      model: mistral/mistral-large-latest
-      api_key: os.environ/MISTRAL_API_KEY
+      model: openai//models/Qwen/Qwen3-30B-A3B-Instruct-FP8
+      api_base: http://host.docker.internal:8000/v1
+      api_key: sk-dummy-token
 
-# Fallback configuration
-fallbacks:
-  - claude-3-opus: gpt-4
-  - claude-3-sonnet: gpt-4-turbo
-
-# Rate limiting
-litellm_settings:
-  drop_params: True  # Drop unsupported parameters
-  success_callback: ["langfuse"]
-  set_verbose: False
-  max_budget: 100.0  # Max spend per day
-  budget_limit: 50.0  # Current budget
+  - model_name: openai/qwen-30b
+    litellm_params:
+      model: openai//models/Qwen/Qwen3-30B-A3B-Instruct-FP8
+      api_base: http://host.docker.internal:8000/v1
+      api_key: sk-dummy-token
 
 # Security settings
 general_settings:
   master_key: os.environ/LITELM_MASTER_KEY
-  database_type: postgresql
-  postgresql_host: redis
-  postgresql_port: 5432
+
+# Rate limiting
+litellm_settings:
+  drop_params: True
+  set_verbose: False
+  max_budget: 100.0
+  budget_limit: 50.0
 
 # API key configuration (internal keys only)
 api_keys:
-  - agent_key_123  # For agent runtime
-  - gateway_key_456  # For gateway
+  - agent_key_123
+  - gateway_key_456
 
-# Model aliases
-model_aliases:
-  fast: claude-3-haiku
-  quality: claude-3-opus
-  balanced: claude-3-sonnet

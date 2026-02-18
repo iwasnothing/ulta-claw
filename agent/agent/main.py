@@ -5,7 +5,7 @@ import signal
 import sys
 from loguru import logger
 
-from .agent import SecureAgent
+from .graph import SecureAgent
 from .config import get_config, validate_network_isolation
 
 

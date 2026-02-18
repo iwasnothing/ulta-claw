@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::Json,
     routing::{get, post},
     Router,
@@ -12,6 +12,8 @@ use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+mod telegram;
 
 // Configuration
 #[derive(Clone)]
@@ -45,7 +47,7 @@ struct HealthResponse {
 async fn health_check(State(state): State<AppState>) -> Json<HealthResponse> {
     let redis_status = check_redis_connection(&state.redis_client).await;
     Json(HealthResponse {
-        status: if redis_status { "healthy" } else { "degraded" },
+        status: if redis_status { "healthy".to_string() } else { "degraded".to_string() },
         redis: redis_status,
     })
 }
@@ -54,10 +56,9 @@ async fn health_check(State(state): State<AppState>) -> Json<HealthResponse> {
 async fn submit_task(
     State(state): State<AppState>,
     Json(req): Json<AgentRequest>,
-    headers: HeaderMap,
 ) -> Result<Json<AgentResponse>, StatusCode> {
     // Validate request
-    if let Err(e) = validate_request(&req, &headers).await {
+    if let Err(e) = validate_request(&req).await {
         error!("Request validation failed: {}", e);
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -87,12 +88,12 @@ async fn submit_task(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    conn.set(&task_key, task_value)
+    conn.set::<_, _, ()>(&task_key, task_value)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Push to agent queue
-    conn.lpush("agent:queue", req.task_id.clone())
+    conn.lpush::<_, _, ()>("agent:queue", req.task_id.clone())
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -151,12 +152,12 @@ async fn get_result(
 // Helper functions
 async fn check_redis_connection(redis_client: &Client) -> bool {
     match redis_client.get_async_connection().await {
-        Ok(mut conn) => conn.ping().await.is_ok(),
+        Ok(mut conn) => redis::cmd("PING").query_async::<_, String>(&mut conn).await.is_ok(),
         Err(_) => false,
     }
 }
 
-async fn validate_request(req: &AgentRequest, headers: &HeaderMap) -> Result<(), String> {
+async fn validate_request(req: &AgentRequest) -> Result<(), String> {
     // Validate task_id format
     if req.task_id.is_empty() {
         return Err("task_id cannot be empty".to_string());
@@ -165,14 +166,6 @@ async fn validate_request(req: &AgentRequest, headers: &HeaderMap) -> Result<(),
     // Validate input
     if req.input.is_null() {
         return Err("input cannot be null".to_string());
-    }
-
-    // Validate authentication header (optional, based on config)
-    if let Some(auth) = headers.get("authorization") {
-        let auth_str = auth.to_str().map_err(|_| "Invalid auth header")?;
-        if !auth_str.starts_with("Bearer ") {
-            return Err("Invalid auth format".to_string());
-        }
     }
 
     Ok(())
@@ -232,6 +225,7 @@ async fn main() -> anyhow::Result<()> {
     let redis_host = std::env::var("REDIS_HOST").unwrap_or_else(|_| "redis".to_string());
     let redis_port = std::env::var("REDIS_PORT").unwrap_or_else(|_| "6379".to_string());
     let redis_password = std::env::var("REDIS_PASSWORD").unwrap_or_else(|_| "default".to_string());
+    let telegram_bot_token = std::env::var("TELEGRAM_BOT_TOKEN").ok();
 
     // Create Redis client
     let redis_url = format!(
@@ -239,6 +233,14 @@ async fn main() -> anyhow::Result<()> {
         redis_password, redis_host, redis_port
     );
     let redis_client = Arc::new(Client::open(redis_url)?);
+
+    // Start Telegram adaptor if bot token is provided
+    if let Some(_) = telegram_bot_token {
+        info!("Starting Telegram adaptor");
+        telegram::start_telegram_adaptor(redis_client.clone());
+    } else {
+        info!("TELEGRAM_BOT_TOKEN not set, Telegram adaptor disabled");
+    }
 
     // Create app state
     let state = AppState { redis_client };
