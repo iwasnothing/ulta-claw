@@ -104,6 +104,7 @@ If there were any errors during execution, acknowledge them and explain what hap
         """
         # Get skill catalog
         skill_catalog = await self.storage.get_skill_catalog()
+        logger.info(f"=== SKILL CATALOG START ===\n{skill_catalog}\n=== SKILL CATALOG END ===")
 
         # Build observations prefix if provided
         observations_prefix = ""
