@@ -1,0 +1,25 @@
+.env
+*target
+*lock
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# CLI symlinks (runtime only)
+secure-agent
+cli/cli/secure-agent
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
