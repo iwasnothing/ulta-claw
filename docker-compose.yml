@@ -5,23 +5,11 @@ services:
   redis:
     image: redis:7-alpine
     container_name: secure-redis
-    command: >
-      redis-server
-      --bind 0.0.0.0
-      --protected-mode yes
-      --requirepass ${REDIS_PASSWORD}
-      --maxmemory 256mb
-      --maxmemory-policy allkeys-lru
-      --appendonly yes
-      --save ""
-      --loglevel notice
-      --timeout 300
-      --tcp-keepalive 60
-      --rename-command FLUSHDB ""
-      --rename-command FLUSHALL ""
-      --rename-command CONFIG ""
-      --rename-command SHUTDOWN ""
-      --rename-command DEBUG ""
+    env_file:
+      - .env
+    volumes:
+      - ./config/redis:/usr/local/etc/redis
+    command: redis-server /usr/local/etc/redis/redis.conf
     networks:
       - secure-net
     restart: unless-stopped
@@ -112,6 +100,36 @@ services:
       - squid
       - litellm
     # No ports exposed - agent is isolated
+
+  # CLI Service - Management tool with Web UI
+  cli:
+    build:
+      context: ./cli
+      dockerfile: Dockerfile
+    container_name: secure-cli
+    ports:
+      - "3000:3000"
+      - "8888:8888"
+    networks:
+      - secure-net
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - GATEWAY_URL=http://gateway:8080
+      - LITELM_URL=http://litellm:4000
+      - SQUID_HOST=squid
+      - SQUID_PORT=3128
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - gateway
+      - litellm
+      - squid
+      - agent
+    profiles:
+      - tools
 
 networks:
   ingress-net:

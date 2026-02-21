@@ -13,6 +13,7 @@ from loguru import logger
 
 from .client import GatewayClient
 from .redis_cli import RedisManager
+from .health import HealthChecker
 
 # Create CLI app
 app = typer.Typer(
@@ -24,38 +25,163 @@ app = typer.Typer(
 # Console for pretty output
 console = Console()
 
-# Global config
-REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+# Global config - Use Docker service names when running inside container
+REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
-GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:8080")
+GATEWAY_URL = os.getenv("GATEWAY_URL", "http://gateway:8080")
 
 
 @app.command()
-def health():
-    """Check system health."""
+def health(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed information"),
+    watch: bool = typer.Option(False, "--watch", "-w", help="Watch health status continuously"),
+):
+    """
+    Check system health status.
+
+    Checks all components: gateway, adaptor channel, agent, Redis, LiteLLM, Squid, and connections.
+    """
     import asyncio
+    from rich.live import Live
+    from rich.panel import Panel
+    from rich.table import Table
 
-    async def check():
-        client = GatewayClient(GATEWAY_URL)
+    async def check_health():
+        checker = HealthChecker(
+            redis_host=REDIS_HOST,
+            redis_port=REDIS_PORT,
+            redis_password=REDIS_PASSWORD or None,
+            gateway_url=GATEWAY_URL,
+            litellm_url=os.getenv("LITELM_URL", "http://litellm:4000"),
+            squid_host=os.getenv("SQUID_HOST", "squid"),
+            squid_port=int(os.getenv("SQUID_PORT", "3128")),
+        )
+
+        return await checker.check_all()
+
+    def format_health_result(result: dict, verbose: bool = False) -> Panel:
+        """Format health result as a Rich panel."""
+
+        # Main status table
+        table = Table(title="Secure Agent Health Check", show_header=True)
+        table.add_column("Component", style="cyan", width=20)
+        table.add_column("Status", width=12)
+        table.add_column("Response Time", justify="right", width=14)
+        if verbose:
+            table.add_column("Details")
+
+        # Status colors
+        status_colors = {
+            "healthy": "green",
+            "degraded": "yellow",
+            "unhealthy": "red",
+        }
+
+        # Overall status
+        overall_status = result.get("status", "unknown")
+        overall_color = status_colors.get(overall_status, "white")
+
+        checks = result.get("checks", {})
+        for component, check_data in checks.items():
+            status = check_data.get("status", "unknown")
+            status_str = f"[{status_colors.get(status, 'white')}]{status.upper()}[/{status_colors.get(status, 'white')}]"
+            response_time = f"{check_data.get('response_time_ms', 0):.1f} ms"
+
+            if verbose:
+                details = check_data.get("details", {})
+                detail_str = ""
+                if isinstance(details, dict):
+                    # Format details nicely
+                    if component == "redis":
+                        detail_str = f"v{details.get('version', '?')}, {details.get('db_size', 0)} keys"
+                    elif component == "agent":
+                        detail_str = f"tasks: {details.get('completed_tasks', 0)}"
+                    elif component == "adaptor_channel":
+                        detail_str = f"queue: {details.get('queue_length', 0)}"
+                    elif component == "connections":
+                        conn_count = len(details.get('connections', {}))
+                        detail_str = f"{conn_count} checked"
+                    else:
+                        # Show message if available
+                        detail_str = check_data.get('message', '')
+                else:
+                    detail_str = str(details)[:30]
+
+                table.add_row(
+                    component.replace("_", " ").title(),
+                    status_str,
+                    response_time,
+                    detail_str[:30] if detail_str else "",
+                )
+            else:
+                table.add_row(
+                    component.replace("_", " ").title(),
+                    status_str,
+                    response_time,
+                )
+
+        # Create panel
+        timestamp = result.get("timestamp", "")
+        timestamp_str = timestamp[:19].replace("T", " ") if timestamp else ""
+
+        panel = Panel(
+            table,
+            title=f"[bold]System Status: [{overall_color}]{overall_status.upper()}[/{overall_color}][/] - {timestamp_str}",
+            border_style=overall_color,
+        )
+
+        return panel
+
+    async def watch_mode():
+        """Watch health status continuously."""
         try:
-            result = await client.health()
-            await client.close()
+            with Live(console, refresh_per_second=1) as live:
+                while True:
+                    result = await check_health()
+                    panel = format_health_result(result, verbose)
+                    live.update(panel)
+                    await asyncio.sleep(2)
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Health monitoring stopped[/yellow]")
 
-            table = Table(title="System Health")
-            table.add_column("Component", style="cyan")
-            table.add_column("Status", style="green")
+    async def single_check():
+        """Run a single health check."""
+        try:
+            result = await check_health()
+            panel = format_health_result(result, verbose)
+            console.print(panel)
 
-            for key, value in result.items():
-                status = "✓" if value else "✗"
-                table.add_row(key, status)
+            # Show verbose details separately if requested
+            if verbose:
+                console.print("\n[bold]Detailed Information:[/bold]")
+                checks = result.get("checks", {})
+                for component, check_data in checks.items():
+                    console.print(f"\n[bold cyan]{component.replace('_', ' ').title()}:[/bold cyan]")
+                    console.print(f"  Status: {check_data.get('status', 'unknown')}")
+                    console.print(f"  Message: {check_data.get('message', 'N/A')}")
+                    details = check_data.get("details", {})
+                    if details:
+                        for key, value in details.items():
+                            if key != "connections":
+                                console.print(f"  {key}: {value}")
+                        # Show connections separately
+                        if "connections" in details:
+                            console.print("  Connections:")
+                            for conn_name, conn_data in details["connections"].items():
+                                status = "[green]✓[/green]" if conn_data.get("healthy") else "[red]✗[/red]"
+                                latency = conn_data.get("latency_ms")
+                                console.print(f"    {status} {conn_name}: {latency}ms" if latency else f"    {status} {conn_name}")
 
-            console.print(table)
         except Exception as e:
-            console.print(f"[bold red]Error:[/bold red] {e}")
+            console.print(f"[bold red]Error checking health:[/bold red] {e}")
+            logger.exception("Health check failed")
             sys.exit(1)
 
-    asyncio.run(check())
+    if watch:
+        asyncio.run(watch_mode())
+    else:
+        asyncio.run(single_check())
 
 
 @app.command()

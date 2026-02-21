@@ -32,7 +32,7 @@ check_service() {
 echo "Services:"
 check_service "Redis" "docker-compose exec redis redis-cli -a \$REDIS_PASSWORD ping" || true
 check_service "Squid" "docker-compose exec squid squid -k check" || true
-check_service "LiteLLM" "curl -s http://localhost:4000/health" || true
+check_service "LiteLLM" "curl -s http://localhost:4000/v1/models" || true
 check_service "Gateway" "curl -s http://localhost:8080/health" || true
 check_service "Agent" "docker-compose ps agent | grep -q 'Up'" || true
 

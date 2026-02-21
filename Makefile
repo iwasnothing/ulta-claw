@@ -1,16 +1,18 @@
-.PHONY: help build up down restart logs test clean setup install-cli install-gateway
+.PHONY: help build up down restart logs test clean setup install-cli install-gateway health
 
 help:
 	@echo "Secure Agent Architecture - Available Commands:"
 	@echo "  make setup      - Setup environment files"
 	@echo "  make build      - Build all Docker images"
 	@echo "  make up         - Start all services"
+	@echo "  make up-cli    - Start all services including CLI"
 	@echo "  make down       - Stop all services"
 	@echo "  make restart    - Restart all services"
 	@echo "  make logs       - View logs"
+	@echo "  make health     - Run system health check"
 	@echo "  make test       - Run tests"
 	@echo "  make clean      - Remove all containers and volumes"
-	@echo "  make install-cli - Install CLI dependencies"
+	@echo "  make install-cli - Install CLI dependencies (local dev)"
 	@echo "  make install-gateway - Build gateway locally"
 
 setup:
@@ -28,6 +30,9 @@ build:
 up:
 	docker-compose up -d
 
+up-cli:
+	docker-compose --profile tools up -d
+
 down:
 	docker-compose down
 
@@ -36,6 +41,18 @@ restart:
 
 logs:
 	docker-compose logs -f
+
+health:
+	@echo "Running system health check..."
+	@docker-compose exec cli secure-agent health || echo "CLI not running - start with 'make up-cli' first"
+
+health-watch:
+	@echo "Running system health check (watch mode)..."
+	@docker-compose exec cli secure-agent health --watch
+
+health-verbose:
+	@echo "Running system health check (verbose)..."
+	@docker-compose exec cli secure-agent health --verbose
 
 test:
 	@echo "Running health check..."

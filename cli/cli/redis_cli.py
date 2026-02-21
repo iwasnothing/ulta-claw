@@ -15,10 +15,12 @@ class RedisManager:
         port: int = 6379,
         password: Optional[str] = None,
         db: int = 0,
+        username: Optional[str] = None,
     ):
         self.host = host
         self.port = port
         self.password = password
+        self.username = username
         self.db = db
         self.client: Optional[redis.Redis] = None
 
@@ -28,6 +30,7 @@ class RedisManager:
             self.client = redis.Redis(
                 host=self.host,
                 port=self.port,
+                username=self.username,
                 password=self.password,
                 db=self.db,
                 decode_responses=True,
