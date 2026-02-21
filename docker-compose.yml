@@ -91,6 +91,8 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - LITELM_ENDPOINT=http://litellm:4000
       - LITELM_KEY=${LITELM_MASTER_KEY}
+      - PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY}
+      - PERPLEXITY_API_URL=${PERPLEXITY_API_URL:-https://api.perplexity.ai}
       - http_proxy=http://squid:3128
       - https_proxy=http://squid:3128
       - NO_PROXY=redis,litellm,localhost
@@ -121,6 +123,8 @@ services:
       - SQUID_HOST=squid
       - SQUID_PORT=3128
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY}
+      - PERPLEXITY_API_URL=${PERPLEXITY_API_URL:-https://api.perplexity.ai}
     restart: unless-stopped
     depends_on:
       - redis

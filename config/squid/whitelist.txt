@@ -8,6 +8,10 @@ api.cohere.ai
 api.google.com
 api.mistral.ai
 
+# Perplexity API
+api.perplexity.ai
+perplexity.ai
+
 # Package managers (for updates only, controlled)
 pypi.org
 files.pythonhosted.org

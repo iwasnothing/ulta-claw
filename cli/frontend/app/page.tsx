@@ -19,6 +19,22 @@ interface HealthData {
   checks: Record<string, HealthCheckResult>
 }
 
+interface Skill {
+  name: string
+  description: string
+  condition: string
+  instructions: string
+  resources: string
+}
+
+interface SkillCatalog {
+  [name: string]: {
+    name: string
+    description: string
+    condition: string
+  }
+}
+
 interface HealthCardProps {
   name: string
   result: HealthCheckResult
@@ -62,7 +78,6 @@ const statusBorderColors: Record<ComponentStatus, string> = {
 
 // Fetcher for SWR
 const fetcher = async (url: string) => {
-  // Use relative path - Next.js will rewrite to FastAPI backend
   const res = await fetch(url, {
     cache: 'no-store',
   })
@@ -218,10 +233,193 @@ function DetailModal({
   )
 }
 
+// Skill Card Component
+function SkillCard({ skill, onDelete }: { skill: SkillCatalog[string]; onDelete: (name: string) => void }) {
+  return (
+    <div className="border rounded-lg p-4 bg-white hover:shadow-md transition-shadow">
+      <div className="flex items-start justify-between mb-2">
+        <h3 className="font-semibold text-gray-900">{skill.name}</h3>
+        <button
+          onClick={() => onDelete(skill.name)}
+          className="text-red-500 hover:text-red-700 text-sm"
+          title="Delete skill"
+        >
+          🗑️
+        </button>
+      </div>
+      <p className="text-sm text-gray-600 mb-2">{skill.description}</p>
+      <div className="text-xs text-gray-500">
+        <strong>When to use:</strong> {skill.condition}
+      </div>
+    </div>
+  )
+}
+
+// Create Skill Modal Component
+function CreateSkillModal({
+  isOpen,
+  onClose,
+  onCreate,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  onCreate: (skill: Omit<Skill, 'name'> & { name: string }) => void
+}) {
+  if (!isOpen) return null
+
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [condition, setCondition] = useState('')
+  const [instructions, setInstructions] = useState('')
+  const [resources, setResources] = useState('')
+  const [isCreating, setIsCreating] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+
+    // Validation
+    if (!name || !description || !condition || !instructions) {
+      setError('Please fill in all required fields')
+      return
+    }
+
+    setIsCreating(true)
+    try {
+      await onCreate({ name, description, condition, instructions, resources })
+      onClose()
+      // Reset form
+      setName('')
+      setDescription('')
+      setCondition('')
+      setInstructions('')
+      setResources('')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create skill')
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full m-4 max-h-[90vh] overflow-auto">
+        <div className="p-4 border-b flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Create New Skill</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+          >
+            ×
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+              {error}
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Skill Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="e.g., web_search"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Description <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="e.g., Search the web for information"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Condition to Use <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              value={condition}
+              onChange={(e) => setCondition(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows={2}
+              placeholder="e.g., When the user asks for recent information, facts, or needs to search the internet"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Instructions <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows={6}
+              placeholder="Step-by-step instructions for executing this skill..."
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Additional Resources (Optional)
+            </label>
+            <textarea
+              value={resources}
+              onChange={(e) => setResources(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows={3}
+              placeholder="Example input/output, supporting files, etc."
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isCreating}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isCreating ? 'Creating...' : 'Create Skill'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 // Main Page Component
 export default function Home() {
   const [selectedComponent, setSelectedComponent] = useState<string | null>(null)
   const [autoRefresh, setAutoRefresh] = useState(true)
+  const [showSkills, setShowSkills] = useState(false)
+  const [showCreateSkill, setShowCreateSkill] = useState(false)
+  const [skills, setSkills] = useState<SkillCatalog>({})
+  const [skillsLoading, setSkillsLoading] = useState(false)
 
   const { data, error, isLoading } = useSWR<HealthData>(
     '/api/health',
@@ -232,6 +430,57 @@ export default function Home() {
       revalidateOnReconnect: true,
     }
   )
+
+  // Load skills when showing skills tab
+  useEffect(() => {
+    if (showSkills) {
+      loadSkills()
+    }
+  }, [showSkills])
+
+  const loadSkills = async () => {
+    setSkillsLoading(true)
+    try {
+      const res = await fetch('/api/skills/catalog')
+      if (res.ok) {
+        const data = await res.json()
+        setSkills(data.catalog || {})
+      }
+    } catch (err) {
+      console.error('Failed to load skills:', err)
+    } finally {
+      setSkillsLoading(false)
+    }
+  }
+
+  const handleCreateSkill = async (skill: Omit<Skill, 'name'> & { name: string }) => {
+    const res = await fetch('/api/skills', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(skill),
+    })
+
+    if (!res.ok) {
+      const data = await res.json()
+      throw new Error(data.detail || 'Failed to create skill')
+    }
+
+    await loadSkills()
+  }
+
+  const handleDeleteSkill = async (name: string) => {
+    if (!confirm(`Are you sure you want to delete skill "${name}"?`)) {
+      return
+    }
+
+    const res = await fetch(`/api/skills/${name}`, {
+      method: 'DELETE',
+    })
+
+    if (res.ok) {
+      await loadSkills()
+    }
+  }
 
   if (error) {
     return (
@@ -267,21 +516,56 @@ export default function Home() {
           <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                Secure Agent Health Check
+                Secure Agent Dashboard
               </h1>
               <p className="text-gray-600">
-                Real-time monitoring of system components
+                {showSkills ? 'Manage agent skills' : 'Real-time monitoring of system components'}
               </p>
             </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setAutoRefresh(!autoRefresh)}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  autoRefresh
+                    ? 'bg-green-600 text-white hover:bg-green-700'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                {autoRefresh ? '🔄 Auto-refreshing' : '⏸️ Paused'}
+              </button>
+              {!autoRefresh && showSkills && (
+                <button
+                  onClick={loadSkills}
+                  disabled={skillsLoading}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                >
+                  {skillsLoading ? 'Loading...' : '🔄 Refresh'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Tab Navigation */}
+          <div className="flex gap-2 mb-4">
             <button
-              onClick={() => setAutoRefresh(!autoRefresh)}
+              onClick={() => setShowSkills(false)}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                autoRefresh
-                  ? 'bg-green-600 text-white hover:bg-green-700'
+                !showSkills
+                  ? 'bg-blue-600 text-white'
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
               }`}
             >
-              {autoRefresh ? '🔄 Auto-refreshing' : '⏸️ Paused'}
+              📊 Health
+            </button>
+            <button
+              onClick={() => setShowSkills(true)}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                showSkills
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              🎯 Skills
             </button>
           </div>
 
@@ -297,26 +581,68 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Health Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-          {Object.entries(data.checks).map(([name, result]) => (
-            <div
-              key={name}
-              className="cursor-pointer"
-              onClick={() => setSelectedComponent(name)}
-            >
-              <HealthCard name={name} result={result} />
+        {/* Health Check Section */}
+        {!showSkills && (
+          <div>
+            {/* Health Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+              {Object.entries(data.checks).map(([name, result]) => (
+                <div
+                  key={name}
+                  className="cursor-pointer"
+                  onClick={() => setSelectedComponent(name)}
+                >
+                  <HealthCard name={name} result={result} />
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
 
-        {/* Last Updated Info */}
-        <div className="text-center text-sm text-gray-500">
-          <p>
-            {autoRefresh ? 'Auto-refreshing every 3 seconds' : 'Refresh paused'} •
-            Click on any component to view details
-          </p>
-        </div>
+            {/* Last Updated Info */}
+            <div className="text-center text-sm text-gray-500">
+              <p>
+                {autoRefresh ? 'Auto-refreshing every 3 seconds' : 'Refresh paused'} •
+                Click on any component to view details
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Skills Section */}
+        {showSkills && (
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold text-gray-900">
+                Agent Skills ({Object.keys(skills).length})
+              </h2>
+              <button
+                onClick={() => setShowCreateSkill(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              >
+                + Create Skill
+              </button>
+            </div>
+
+            {skillsLoading && Object.keys(skills).length === 0 ? (
+              <div className="text-center py-12 text-gray-500">Loading skills...</div>
+            ) : Object.keys(skills).length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                <div className="text-6xl mb-4">🎯</div>
+                <p className="text-lg mb-2">No skills configured yet</p>
+                <p className="text-sm">Click "Create Skill" to add your first skill</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {Object.values(skills).map((skill) => (
+                  <SkillCard
+                    key={skill.name}
+                    skill={skill}
+                    onDelete={handleDeleteSkill}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Detail Modal */}
@@ -328,6 +654,13 @@ export default function Home() {
           result={data.checks[selectedComponent]}
         />
       )}
+
+      {/* Create Skill Modal */}
+      <CreateSkillModal
+        isOpen={showCreateSkill}
+        onClose={() => setShowCreateSkill(false)}
+        onCreate={handleCreateSkill}
+      />
     </main>
   )
 }

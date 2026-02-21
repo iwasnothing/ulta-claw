@@ -1,6 +1,7 @@
 """Redis storage for secure agent."""
 
 import json
+import re
 from typing import Optional, Any, Dict
 import redis.asyncio as redis
 from loguru import logger
@@ -150,3 +151,175 @@ class SecureStorage:
         except Exception as e:
             logger.error(f"Failed to get config {key}: {e}")
             return default
+
+    # Skill management methods
+
+    def _parse_skill_markdown(self, skill_name: str, skill_markdown: str) -> Dict[str, str]:
+        """
+        Parse skill markdown to extract name, description, condition, and full content.
+
+        Args:
+            skill_name: Name of the skill
+            skill_markdown: The markdown string
+
+        Returns:
+            Dictionary with name, description, condition, and full markdown
+        """
+        # Extract sections using regex
+        description_match = re.search(r'##?\s*What.*Skill\s*Does?\s*\n(.*?)(?=##|\n\n|\Z)', skill_markdown, re.IGNORECASE | re.DOTALL)
+        condition_match = re.search(r'##?\s*When.*Should\s*Be\s*Used\s*\n(.*?)(?=##|\n\n|\Z)', skill_markdown, re.IGNORECASE | re.DOTALL)
+
+        description = description_match.group(1).strip() if description_match else ""
+        condition = condition_match.group(1).strip() if condition_match else ""
+
+        return {
+            "name": skill_name,
+            "description": description,
+            "condition": condition,
+            "full_markdown": skill_markdown,
+        }
+
+    async def create_skill(
+        self,
+        skill_name: str,
+        skill_markdown: str
+    ) -> bool:
+        """
+        Create a new skill in Redis.
+
+        The skill is stored as a complete markdown string.
+
+        Args:
+            skill_name: Unique name for the skill
+            skill_markdown: Complete markdown string with:
+                1. What Skill does
+                2. When it should be used
+                3. Step-by-step instructions
+                4. Optional supporting resources
+
+        Returns:
+            True if successful, False otherwise
+        """
+        skill_key = f"skill:{skill_name}"
+
+        try:
+            # Store full skill markdown
+            await self.redis.set(skill_key, skill_markdown)
+
+            # Add to skills index set
+            await self.redis.sadd("skills:index", skill_name)
+
+            logger.info(f"Created skill: {skill_name}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to create skill {skill_name}: {e}")
+            return False
+
+    async def get_skill(self, skill_name: str) -> Optional[str]:
+        """
+        Get a skill by name from Redis.
+
+        Returns the full markdown string.
+
+        Args:
+            skill_name: Name of the skill
+
+        Returns:
+            Skill markdown string or None if not found
+        """
+        skill_key = f"skill:{skill_name}"
+        try:
+            skill_markdown = await self.redis.get(skill_key)
+            return skill_markdown
+        except Exception as e:
+            logger.error(f"Failed to get skill {skill_name}: {e}")
+            return None
+
+    async def get_all_skills(self) -> Dict[str, str]:
+        """
+        Get all skills from Redis (full markdown strings).
+
+        Returns:
+            Dictionary mapping skill names to full markdown strings
+        """
+        try:
+            skill_names = await self.redis.smembers("skills:index")
+            skills = {}
+
+            for skill_name in skill_names:
+                skill_markdown = await self.get_skill(skill_name)
+                if skill_markdown:
+                    skills[skill_name] = skill_markdown
+
+            logger.info(f"Retrieved {len(skills)} skills")
+            return skills
+        except Exception as e:
+            logger.error(f"Failed to get all skills: {e}")
+            return {}
+
+    async def get_skill_catalog(self) -> str:
+        """
+        Get skill catalog (name, description, and condition to use only).
+
+        Parses markdown to extract only the relevant sections for orchestration.
+
+        Returns:
+            Formatted string with skill catalog
+        """
+        skills = await self.get_all_skills()
+
+        if not skills:
+            return "No skills available."
+
+        catalog_lines = ["Available Skills:\n"]
+        for skill_name, skill_markdown in skills.items():
+            # Parse markdown to extract description and condition
+            parsed = self._parse_skill_markdown(skill_name, skill_markdown)
+
+            catalog_lines.append(f"- {skill_name}")
+            catalog_lines.append(f"  Description: {parsed['description']}")
+            catalog_lines.append(f"  When to use: {parsed['condition']}")
+            catalog_lines.append("")
+
+        return "\n".join(catalog_lines)
+
+    async def delete_skill(self, skill_name: str) -> bool:
+        """
+        Delete a skill from Redis.
+
+        Args:
+            skill_name: Name of the skill to delete
+
+        Returns:
+            True if successful, False otherwise
+        """
+        skill_key = f"skill:{skill_name}"
+
+        try:
+            # Delete skill data
+            result = await self.redis.delete(skill_key)
+
+            # Remove from index
+            await self.redis.srem("skills:index", skill_name)
+
+            if result:
+                logger.info(f"Deleted skill: {skill_name}")
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Failed to delete skill {skill_name}: {e}")
+            return False
+
+    async def list_skill_names(self) -> list[str]:
+        """
+        List all skill names.
+
+        Returns:
+            List of skill names
+        """
+        try:
+            skill_names = await self.redis.smembers("skills:index")
+            return sorted(list(skill_names))
+        except Exception as e:
+            logger.error(f"Failed to list skill names: {e}")
+            return []
