@@ -293,7 +293,12 @@ Execution Results:
             'output': output,
             'error': error,
         }
-        state['execution_results'].append(result)
+        if 'skill_results' in state:
+            state['skill_results'].append(result)
+        elif 'execution_results' in state:
+            state['execution_results'].append(result)
+        else:
+            state['skill_results'] = [result]
         logger.info(f"Recorded execution result for {skill_name}")
 
     async def is_plan_complete(self, state: OrchestrationState) -> bool:
