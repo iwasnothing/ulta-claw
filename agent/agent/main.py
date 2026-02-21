@@ -13,7 +13,7 @@ async def main():
     """Main agent loop."""
     # Configure logging
     logger.remove()
-    logger.add(sys.stdout, level="INFO")
+    logger.add(sys.stdout, level="DEBUG")
 
     # Get configuration
     config = get_config()

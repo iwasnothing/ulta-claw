@@ -49,11 +49,11 @@ When analyzing the user's request:
 - If multiple skills are needed, order them logically
 
 Your response must be in JSON format with these fields:
-{
+{{
   "user_intent": "brief description of what the user wants",
-  "action_plan": ["skill_name1", "skill_name2", ...],  // list of skills to execute, or [] if no skills needed
+  "action_plan": ["skill_name1", "skill_name2", ...],
   "reasoning": "brief explanation of your decision"
-}
+}}
 
 If no skills can fulfill the user's intent:
 - Set "action_plan" to an empty list []
@@ -121,17 +121,32 @@ If there were any errors during execution, acknowledge them and explain what hap
 
         # Call LLM to determine action plan
         try:
+            logger.debug(f"Orchestration system prompt:\n{system_prompt}")
+            logger.debug(f"User message for orchestration: {user_message}")
+
             response = await self.llm.chat(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_message},
                 ],
-                temperature=0.3,  # Lower temperature for more deterministic planning
+                temperature=0.3,
             )
+
+            logger.debug(f"Raw LLM response for orchestration:\n{response}")
+
+            # Strip markdown code fences if present
+            cleaned = response.strip()
+            if cleaned.startswith("```"):
+                lines = cleaned.split("\n")
+                # Remove first line (```json or ```) and last line (```)
+                lines = [l for l in lines if not l.strip().startswith("```")]
+                cleaned = "\n".join(lines).strip()
+                logger.debug(f"Stripped markdown fences, cleaned response:\n{cleaned}")
 
             # Parse JSON response
             try:
-                result = json.loads(response)
+                result = json.loads(cleaned)
+                logger.debug(f"Parsed orchestration result: {result}")
 
                 state = OrchestrationState(
                     user_message=user_message,
@@ -150,9 +165,8 @@ If there were any errors during execution, acknowledge them and explain what hap
 
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse orchestration response: {e}")
-                logger.debug(f"Response was: {response}")
+                logger.error(f"Response that failed parsing:\n{response}")
 
-                # Fallback: return empty action plan
                 state = OrchestrationState(
                     user_message=user_message,
                     user_intent="Unable to determine",
@@ -163,7 +177,7 @@ If there were any errors during execution, acknowledge them and explain what hap
                 return state
 
         except Exception as e:
-            logger.error(f"Failed to determine action plan: {e}")
+            logger.error(f"Failed to determine action plan: {e}", exc_info=True)
             state = OrchestrationState(
                 user_message=user_message,
                 user_intent="Error",

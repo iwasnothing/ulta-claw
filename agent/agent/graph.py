@@ -131,12 +131,15 @@ class SecureAgent:
         try:
             user_message = state.get("user_message", "")
             observations = state.get("observations", "")
+            logger.debug(f"Orchestrate node - user_message: {user_message[:200]}")
+            logger.debug(f"Orchestrate node - observations length: {len(observations)}")
 
             # Use orchestration agent to determine action plan
             orchestration_state = await self.orchestrator.determine_action_plan(
                 user_message=user_message,
                 observations=observations
             )
+            logger.debug(f"Orchestration state returned: {dict(orchestration_state)}")
 
             # Update state with orchestration results
             state["user_intent"] = orchestration_state.get("user_intent", "")
@@ -151,11 +154,11 @@ class SecureAgent:
 
             logger.info(
                 f"Orchestration complete - Intent: {state['user_intent']}, "
-                f"Action plan: {state['action_plan']}"
+                f"Action plan: {state['action_plan']}, next_skill: {next_skill}"
             )
 
         except Exception as e:
-            logger.error(f"Orchestration failed: {e}")
+            logger.error(f"Orchestration failed: {e}", exc_info=True)
             state["error"] = str(e)
             state["action_plan"] = []
             state["next_skill"] = None
@@ -209,6 +212,8 @@ class SecureAgent:
                 logger.warning("No skill to execute")
                 return state
 
+            logger.debug(f"Executing skill: {skill_name} (step {state.get('current_step', 0)})")
+
             user_message = state.get("user_message", "")
             previous_results = state.get("skill_results", [])
             observations = state.get("observations", "")
@@ -218,6 +223,8 @@ class SecureAgent:
                 "current_step": state.get("current_step", 0),
             }
 
+            logger.debug(f"Skill execution context: {context}")
+
             # Execute the skill
             result = await self.skill_executor.execute_skill(
                 skill_name=skill_name,
@@ -226,6 +233,7 @@ class SecureAgent:
                 context=context,
                 observations=observations
             )
+            logger.debug(f"Skill execution result - output length: {len(result.get('output') or '')}, error: {result.get('error')}")
 
             # Append raw output to raw_message_history for OM processing
             if result.get("output"):

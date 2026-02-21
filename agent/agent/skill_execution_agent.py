@@ -121,13 +121,20 @@ Execute the skill and provide the result. Your response will be used to answer t
 ---"""
 
         # Build system prompt with observations and full skill markdown
-        system_prompt = self.SKILL_EXECUTION_SYSTEM_PROMPT.format(
-            observations_prefix=observations_prefix,
-            skill_markdown=skill_markdown,
-            user_message=user_message,
-            previous_results=previous_results_text,
-            context=context_text
-        )
+        try:
+            system_prompt = self.SKILL_EXECUTION_SYSTEM_PROMPT.format(
+                observations_prefix=observations_prefix,
+                skill_markdown=skill_markdown,
+                user_message=user_message,
+                previous_results=previous_results_text,
+                context=context_text
+            )
+        except KeyError as e:
+            logger.error(f"Failed to format skill execution prompt, bad placeholder: {e}")
+            logger.debug(f"Skill markdown that caused the error:\n{skill_markdown[:500]}")
+            return {"error": f"Skill markdown contains invalid template braces: {e}", "output": None}
+
+        logger.debug(f"Skill execution system prompt length: {len(system_prompt)} chars")
 
         # Execute the skill using LLM with tool-calling capability
         try:

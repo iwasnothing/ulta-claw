@@ -130,29 +130,47 @@ class SecureLLM:
         }
         messages_with_system = [system_prompt] + serialized_messages
 
-        logger.debug(f"Chat with model={model}, {len(messages)} messages")
+        logger.debug(f"Chat with model={model}, {len(messages_with_system)} messages (incl. injected system prompt)")
+        for i, msg in enumerate(messages_with_system):
+            role = msg.get("role", "unknown")
+            content = msg.get("content", "")
+            logger.debug(f"  Message[{i}] role={role}, length={len(content)}")
 
         try:
+            request_body = {
+                "model": model,
+                "messages": messages_with_system,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                **kwargs
+            }
+            logger.debug(f"Sending request to {self.config.litellm_endpoint}/v1/chat/completions")
+
             response = await self.client.post(
                 "/v1/chat/completions",
-                json={
-                    "model": model,
-                    "messages": messages_with_system,
-                    "temperature": temperature,
-                    "max_tokens": max_tokens,
-                    **kwargs
-                }
+                json=request_body,
             )
+            logger.debug(f"LLM HTTP status: {response.status_code}")
             response.raise_for_status()
 
-            result = response.json()["choices"][0]["message"]["content"]
-            logger.info(f"LLM response: {result[:200]}...")  # Log first 200 chars
-            logger.debug(f"Chat response: {len(result)} characters")
+            response_json = response.json()
+            logger.debug(f"LLM response keys: {list(response_json.keys())}")
+
+            result = response_json["choices"][0]["message"]["content"]
+            logger.info(f"LLM response ({len(result)} chars): {result[:300]}...")
+            logger.debug(f"Full LLM response:\n{result}")
 
             return result
 
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Chat HTTP error {e.response.status_code}: {e.response.text[:500]}")
+            raise
+        except KeyError as e:
+            logger.error(f"Unexpected LLM response structure, missing key: {e}")
+            logger.error(f"Response body: {response.text[:1000]}")
+            raise
         except Exception as e:
-            logger.error(f"Chat failed: {e}")
+            logger.error(f"Chat failed: {type(e).__name__}: {e}")
             raise
 
     async def close(self):
