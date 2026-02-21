@@ -165,12 +165,26 @@ class SecureStorage:
         Returns:
             Dictionary with name, description, condition, and full markdown
         """
+        logger.debug(f"Parsing skill markdown for '{skill_name}' ({len(skill_markdown)} chars)")
+        logger.debug(f"Skill markdown first 500 chars:\n{skill_markdown[:500]}")
+
         # Extract sections using regex
         description_match = re.search(r'##?\s*What.*Skill\s*Does?\s*\n(.*?)(?=##|\n\n|\Z)', skill_markdown, re.IGNORECASE | re.DOTALL)
         condition_match = re.search(r'##?\s*When.*Should\s*Be\s*Used\s*\n(.*?)(?=##|\n\n|\Z)', skill_markdown, re.IGNORECASE | re.DOTALL)
 
         description = description_match.group(1).strip() if description_match else ""
         condition = condition_match.group(1).strip() if condition_match else ""
+
+        if not description:
+            logger.warning(f"Skill '{skill_name}': description regex did not match — falling back to first non-heading line")
+            lines = [l.strip() for l in skill_markdown.split("\n") if l.strip() and not l.strip().startswith("#")]
+            description = lines[0] if lines else f"Skill: {skill_name}"
+
+        if not condition:
+            logger.warning(f"Skill '{skill_name}': condition regex did not match — using skill name as hint")
+            condition = f"When '{skill_name}' capability is needed"
+
+        logger.debug(f"Parsed skill '{skill_name}' — description: {description!r}, condition: {condition!r}")
 
         return {
             "name": skill_name,
@@ -269,11 +283,13 @@ class SecureStorage:
         skills = await self.get_all_skills()
 
         if not skills:
+            logger.warning("No skills found in Redis — catalog will be empty")
             return "No skills available."
+
+        logger.info(f"Building skill catalog from {len(skills)} skills: {list(skills.keys())}")
 
         catalog_lines = ["Available Skills:\n"]
         for skill_name, skill_markdown in skills.items():
-            # Parse markdown to extract description and condition
             parsed = self._parse_skill_markdown(skill_name, skill_markdown)
 
             catalog_lines.append(f"- {skill_name}")
@@ -281,7 +297,10 @@ class SecureStorage:
             catalog_lines.append(f"  When to use: {parsed['condition']}")
             catalog_lines.append("")
 
-        return "\n".join(catalog_lines)
+        catalog = "\n".join(catalog_lines)
+        logger.info(f"Final skill catalog:\n{catalog}")
+
+        return catalog
 
     async def delete_skill(self, skill_name: str) -> bool:
         """
