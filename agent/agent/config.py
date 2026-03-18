@@ -29,6 +29,11 @@ class AgentConfig(BaseSettings):
     temperature: float = 0.7
     max_retries: int = 3
 
+    # Memory settings
+    embedding_model: str = "embedding-gemma-300m"
+    embedding_api_base: str = "http://host.docker.internal:8010/v1"
+    memory_dir: str = "./memory_store"
+
     # Queue settings
     queue_poll_interval: float = 1.0  # seconds
     task_timeout: int = 300  # seconds

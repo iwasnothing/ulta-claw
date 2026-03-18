@@ -8,6 +8,7 @@ from loguru import logger
 
 from .llm import SecureLLM
 from .storage import SecureStorage
+from .memory import AgentMemory
 from .orchestration_agent import OrchestrationAgent, OrchestrationState
 from .skill_execution_agent import SkillExecutionAgent
 
@@ -31,6 +32,10 @@ class AgentState(dict):
     final_response: Optional[str] = None
     error: Optional[str] = None
 
+    # --- Memory Variables ---
+    # Retrieved relevant memories from mem0
+    memory_context: str = ""
+
 
 class SecureAgent:
     """Secure LangGraph agent with orchestration and skill execution."""
@@ -39,6 +44,7 @@ class SecureAgent:
         self.orchestrator = OrchestrationAgent()
         self.skill_executor = SkillExecutionAgent()
         self.storage = SecureStorage()
+        self.memory = AgentMemory()
         self.graph = self._build_graph()
 
     async def initialize(self):
@@ -46,6 +52,7 @@ class SecureAgent:
         await self.orchestrator.initialize()
         await self.skill_executor.initialize()
         await self.storage.connect()
+        await self.memory.initialize()
         logger.info("Secure agent initialized")
 
     def _build_graph(self) -> StateGraph:
@@ -123,10 +130,12 @@ class SecureAgent:
         Orchestrate the action plan based on user message.
 
         This node:
-        1. Queries all skills from Redis
-        2. Determines user intent
-        3. Generates action plan
-        4. Sets next skill to execute
+        1. Retrieves relevant memories from mem0
+        2. Queries all skills from Redis
+        3. Determines user intent
+        4. Generates action plan
+        5. Sets next skill to execute
+        6. Adds user message to memory
         """
         try:
             user_message = state.get("user_message", "")
@@ -134,9 +143,32 @@ class SecureAgent:
             logger.debug(f"Orchestrate node - user_message: {user_message[:200]}")
             logger.debug(f"Orchestrate node - observations length: {len(observations)}")
 
-            # Use orchestration agent to determine action plan
+            # Retrieve relevant memories
+            relevant_memories = await self.memory.search(
+                query=user_message,
+                limit=5,
+                threshold=0.5,
+            )
+
+            # Format memories for context
+            memory_context = ""
+            if relevant_memories:
+                memory_lines = ["## Relevant Past Context\n"]
+                for i, mem in enumerate(relevant_memories, 1):
+                    content = mem.get("memory", "")
+                    score = mem.get("score", 0)
+                    memory_lines.append(f"{i}. [similarity: {score:.2f}] {content}")
+                memory_context = "\n".join(memory_lines)
+                logger.debug(f"Retrieved {len(relevant_memories)} relevant memories")
+
+            # Enhanced user message with memory context
+            enhanced_message = user_message
+            if memory_context:
+                enhanced_message = f"{memory_context}\n\n## Current Request\n{user_message}"
+
+            # Use orchestration agent to determine action plan with memory context
             orchestration_state = await self.orchestrator.determine_action_plan(
-                user_message=user_message,
+                user_message=enhanced_message,
                 observations=observations
             )
             logger.debug(f"Orchestration state returned: {dict(orchestration_state)}")
@@ -147,10 +179,20 @@ class SecureAgent:
             state["current_step"] = 0
             state["skill_results"] = []
             state["error"] = orchestration_state.get("error")
+            state["memory_context"] = memory_context
 
             # Get first skill to execute
             next_skill = await self.orchestrator.get_next_skill(orchestration_state)
             state["next_skill"] = next_skill
+
+            # Add user message to memory for future retrieval
+            await self.memory.add(
+                content=f"User request: {user_message}",
+                metadata={
+                    "type": "user_request",
+                    "intent": state.get("user_intent", ""),
+                },
+            )
 
             logger.info(
                 f"Orchestration complete - Intent: {state['user_intent']}, "
@@ -286,6 +328,7 @@ class SecureAgent:
         1. Takes all execution results
         2. Synthesizes them into a coherent response
         3. Generates the final response to the user
+        4. Stores the conversation in memory
         """
         try:
             orchestration_state = OrchestrationState(
@@ -300,6 +343,28 @@ class SecureAgent:
             final_response = await self.orchestrator.summarize_results(orchestration_state)
 
             state["final_response"] = final_response
+
+            # Store conversation in memory
+            user_message = state.get("user_message", "")
+            await self.memory.add_conversation(
+                user_message=user_message,
+                agent_response=final_response,
+            )
+
+            # Store skill execution results if any
+            if state.get("skill_results"):
+                skill_summary = "\n".join([
+                    f"- {r.get('skill_name', 'unknown')}: {r.get('output', '')[:200]}"
+                    for r in state.get("skill_results", [])
+                ])
+                await self.memory.add(
+                    content=f"Skills executed for '{user_message[:100]}...':\n{skill_summary}",
+                    metadata={
+                        "type": "skill_execution",
+                        "intent": state.get("user_intent", ""),
+                        "num_skills": len(state.get("skill_results", [])),
+                    },
+                )
 
             logger.info("Summary generated")
 
@@ -677,4 +742,5 @@ Focus on what future decisions need to know, not everything that happened.
         await self.orchestrator.shutdown()
         await self.skill_executor.shutdown()
         await self.storage.disconnect()
+        # Note: mem0 doesn't have an explicit close method for FAISS
         logger.info("Agent shutdown complete")

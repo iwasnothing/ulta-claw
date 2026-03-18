@@ -5,3 +5,7 @@ All egress must go through Squid proxy and LiteLLM.
 """
 
 __version__ = "0.1.0"
+
+from .memory import AgentMemory
+
+__all__ = ["AgentMemory"]

@@ -13,6 +13,12 @@ model_list:
       api_base: http://host.docker.internal:8000/v1
       api_key: sk-dummy-token
 
+  - model_name: embedding-gemma-300m
+    litellm_params:
+      model: openai//models/google/embeddinggemma-300m
+      api_base: http://host.docker.internal:8010/v1
+      api_key: sk-dummy-token
+
 # Security settings
 general_settings:
   master_key: os.environ/LITELM_MASTER_KEY

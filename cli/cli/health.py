@@ -67,6 +67,7 @@ class HealthChecker:
             self.check_redis(),
             self.check_litellm(),
             self.check_squid(),
+            self.check_memory(),
             self.check_connections(),
         ]
 
@@ -482,6 +483,83 @@ class HealthChecker:
                 status="unhealthy",
                 message=f"Unexpected error: {e}",
                 response_time_ms=(time.time() - start_time) * 1000,
+            )
+
+    async def check_memory(self) -> HealthCheckResult:
+        """Check mem0 memory layer status and display memory content."""
+        start_time = time.time()
+        details = {}
+
+        try:
+            # Import mem0 memory module
+            import sys
+            import os
+            agent_path = os.path.join(os.path.dirname(__file__), "..", "..", "agent")
+            if agent_path not in sys.path:
+                sys.path.insert(0, agent_path)
+
+            from agent.memory import AgentMemory
+
+            # Initialize memory with proper config
+            # In CLI container, use host.docker.internal for the embedding API
+            memory = AgentMemory(memory_dir="/tmp/agent_memory")
+            await memory.initialize()
+
+            # Get memory statistics
+            stats = await memory.get_stats()
+            details.update(stats)
+
+            # Get recent memories
+            recent_memories = await memory.get_all(limit=10)
+            details["recent_count"] = len(recent_memories)
+
+            # Format recent memories for display
+            memory_list = []
+            for mem in recent_memories:
+                memory_list.append({
+                    "id": mem.get("id", ""),
+                    "content": mem.get("memory", "")[:200],  # Truncate for display
+                    "score": mem.get("score", 0),
+                    "metadata": mem.get("metadata", {}),
+                })
+            details["recent_memories"] = memory_list
+
+            response_time = (time.time() - start_time) * 1000
+
+            # Determine status
+            if stats.get("total_memories", 0) > 0:
+                return HealthCheckResult(
+                    component="memory",
+                    status="healthy",
+                    message=f"Memory layer operational with {stats['total_memories']} memories",
+                    response_time_ms=response_time,
+                    details=details,
+                )
+            else:
+                return HealthCheckResult(
+                    component="memory",
+                    status="healthy",
+                    message="Memory layer operational (no memories stored yet)",
+                    response_time_ms=response_time,
+                    details=details,
+                )
+
+        except ImportError as e:
+            return HealthCheckResult(
+                component="memory",
+                status="degraded",
+                message=f"Memory module not available: {e}",
+                response_time_ms=(time.time() - start_time) * 1000,
+                details=details,
+            )
+        except Exception as e:
+            logger.error(f"Memory health check error: {e}")
+            return HealthCheckResult(
+                component="memory",
+                status="degraded",
+                message=f"Memory check failed: {e}",
+                response_time_ms=(time.time() - start_time) * 1000,
+                details=details,
             )
 
     async def check_connections(self) -> HealthCheckResult:

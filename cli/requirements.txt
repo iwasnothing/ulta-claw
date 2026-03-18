@@ -19,3 +19,7 @@ loguru>=0.7.0
 # API
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
+
+# Memory (for health check)
+mem0ai>=0.1.35
+faiss-cpu>=1.7.4

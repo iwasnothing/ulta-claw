@@ -29,3 +29,7 @@ loguru>=0.7.0
 # Utilities
 python-dotenv>=1.0.0
 tenacity>=8.2.0
+
+# Memory
+mem0ai>=0.1.35
+faiss-cpu>=1.7.4
